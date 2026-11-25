@@ -17,8 +17,8 @@ from cctv.ingest.manifest import add_quality_flags, build_coverage, parse_filena
     ],
 )
 def test_parse_filename_ok(name, cam, ts):
-    p = parse_filename(name)
-    assert p is not None and p.camera_id == cam and p.captured_at == ts
+    camera_id, label, timestamp = parse_filename(name)
+    assert camera_id == cam and timestamp == ts
 
 
 @pytest.mark.parametrize("name", ["thumbs.db", "1028_x_20260825.jpg", "1028_x_20261399_061012.jpg"])
@@ -70,4 +70,4 @@ def test_pixels_mode_flags_frozen(images_dir):
     src = images_dir / "1028" / "1028_a_b_20260825_061012.jpg"
     (images_dir / "1028" / "1028_a_b_20260825_063012.jpg").write_bytes(src.read_bytes())
     m = add_quality_flags(scan_images(images_dir, with_pixels=True))
-    assert "mean_grey" in m and m["is_frozen"].sum() == 1
+    assert "mean_grey" in m and m["is_frozen"].sum() == 1 and m["is_dark"].sum() == 0

@@ -1,0 +1,12 @@
+pandas>=2.2
+pyarrow>=15
+Pillow>=10
+duckdb>=1.0
+pytest>=8
+# Later stages (install when needed):
+# ultralytics          # YOLO vehicle detection; install CUDA PyTorch first
+# requests
+# beautifulsoup4
+# streamlit
+# plotly
+# pydeck

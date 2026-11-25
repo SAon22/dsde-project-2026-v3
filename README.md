@@ -35,6 +35,32 @@ python -m cctv.ingest.manifest --pixels   # also brightness and frozen-frame det
 pytest
 ```
 
+## Vehicle detection (Step 1: pilot)
+
+Install PyTorch with CUDA first (check your CUDA version with `nvidia-smi`), then the rest:
+
+```bash
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+pip install -r requirements.txt
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+```
+
+```bash
+python -m cctv.detect.yolo_runner        # quick pass: rank cameras by traffic
+python -m cctv.detect.roi_tool           # draw the counting area per camera
+python -m cctv.detect.pilot sample       # pick 200 frames + hand-count sheet
+python -m cctv.detect.pilot compare      # YOLO vs hand counts
+```
+
+| File | What it does |
+| --- | --- |
+| `detect/roi.py` | load/save the counting area (ROI) per camera, fallback = bottom 60% |
+| `detect/counting.py` | turn YOLO boxes into counts and congestion for each frame |
+| `detect/frames.py` | load usable frames from the manifest, pick 1 per hour |
+| `detect/yolo_runner.py` | run YOLO and save boxes (resumable), quick camera ranking |
+| `detect/roi_tool.py` | click tool to draw ROIs |
+| `detect/pilot.py` | sample pilot frames, compare YOLO with hand counts |
+
 ## Known data issues
 
 - Some frames are blank white 400x266 placeholders (~1.4 KB) from failed captures, mostly 07:20-08:50.

@@ -52,6 +52,17 @@ python -m cctv.detect.pilot sample       # pick 200 frames + hand-count sheet
 python -m cctv.detect.pilot compare      # YOLO vs hand counts
 ```
 
+## Vehicle detection (Steps 2 and 3: full run and final table)
+
+```bash
+python -m cctv.detect.yolo_runner --full   # yolo11m on every usable frame (~20 min on GPU, resumable)
+python -m cctv.detect.build_traffic        # -> data/processed/traffic.parquet and traffic.csv
+```
+
+Pilot result (99 hand-counted frames, yolo11m at confidence 0.20): average error 1.8 vehicles per
+frame, bias -0.25 overall, about -24% at night. `vehicles_adjusted` scales counts by the pilot's
+day / dusk / night factor; `vehicles` is the raw YOLO count.
+
 | File | What it does |
 | --- | --- |
 | `detect/roi.py` | load/save the counting area (ROI) per camera, fallback = bottom 60% |
@@ -60,6 +71,7 @@ python -m cctv.detect.pilot compare      # YOLO vs hand counts
 | `detect/yolo_runner.py` | run YOLO and save boxes (resumable), quick camera ranking |
 | `detect/roi_tool.py` | click tool to draw ROIs |
 | `detect/pilot.py` | sample pilot frames, compare YOLO with hand counts |
+| `detect/build_traffic.py` | final table: counts per camera per 10-minute slot, with night correction |
 
 ## Known data issues
 

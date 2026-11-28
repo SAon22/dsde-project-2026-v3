@@ -3,6 +3,10 @@
 Quick first pass (ranks cameras by traffic, to know which ROIs to draw first):
   python -m cctv.detect.yolo_runner --model yolo11s.pt
 
+Full run on every usable frame (Step 2, uses the model chosen in the pilot):
+  python -m cctv.detect.yolo_runner --full
+Then build the final table with: python -m cctv.detect.build_traffic
+
 Boxes are saved with a low confidence cut-off (0.05) so the real threshold can be
 chosen later in the pilot without running YOLO again.
 """
@@ -21,6 +25,8 @@ DETECT_DIR = config.INTERIM_DIR / "detect"
 SAVE_CONFIDENCE = 0.05  # keep almost every box; we filter later
 IMAGE_SIZE = 640  # YOLO upscales our 352x288 frames to this, which helps with small vehicles
 CHUNK_SIZE = 1000  # frames per saved file; if the run stops, finished chunks are kept
+FULL_RUN_MODEL = "yolo11m.pt"  # chosen in the pilot: almost the same error as yolo11s, half the bias
+BOX_COLUMNS = ["rel_path", "cls_name", "conf", "x1", "y1", "x2", "y2"]
 
 
 def detect_boxes(model, image_paths):
@@ -75,8 +81,7 @@ def run_yolo(frames, model_name, run_name, batch_size=32):
             for batch_start in range(0, len(chunk), batch_size):
                 chunk_boxes += detect_boxes(model, chunk[batch_start : batch_start + batch_size])
 
-            columns = ["rel_path", "cls_name", "conf", "x1", "y1", "x2", "y2"]
-            pd.DataFrame(chunk_boxes, columns=columns).to_parquet(out_dir / f"part_{part_number:04d}.parquet")
+            pd.DataFrame(chunk_boxes, columns=BOX_COLUMNS).to_parquet(out_dir / f"part_{part_number:04d}.parquet")
             part_number += 1
             with open(done_file, "a", encoding="utf-8") as f:
                 f.write("\n".join(chunk) + "\n")
@@ -85,12 +90,25 @@ def run_yolo(frames, model_name, run_name, batch_size=32):
             speed = finished / (time.time() - start_time)
             print(f"  {finished}/{len(to_do)} frames ({speed:.0f} frames per second)")
 
-    # Read back every part file and keep the boxes for the frames we were asked about.
+    all_boxes = load_saved_boxes(run_name, model_name)
+    return all_boxes[all_boxes["rel_path"].isin(set(frames["rel_path"]))]
+
+
+def load_saved_boxes(run_name, model_name):
+    """Read every saved part file of a run back into one table (no YOLO needed)."""
+    out_dir = DETECT_DIR / run_name / model_name.replace(".pt", "")
     parts = [pd.read_parquet(p) for p in sorted(out_dir.glob("part_*.parquet"))]
     if not parts:
-        return pd.DataFrame(columns=["rel_path", "cls_name", "conf", "x1", "y1", "x2", "y2"])
-    all_boxes = pd.concat(parts, ignore_index=True)
-    return all_boxes[all_boxes["rel_path"].isin(set(frames["rel_path"]))]
+        return pd.DataFrame(columns=BOX_COLUMNS)
+    return pd.concat(parts, ignore_index=True)
+
+
+def frames_done(run_name, model_name):
+    """The set of frames a run has already finished (from its done.txt)."""
+    done_file = DETECT_DIR / run_name / model_name.replace(".pt", "") / "done.txt"
+    if not done_file.exists():
+        return set()
+    return set(done_file.read_text(encoding="utf-8").splitlines())
 
 
 def rank_cameras(measured):
@@ -115,10 +133,20 @@ def rank_cameras(measured):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--model", default="yolo11s.pt")
+    parser.add_argument("--model", default=None, help="default: yolo11s.pt (quick) or yolo11m.pt (--full)")
+    parser.add_argument("--full", action="store_true", help="run on every usable frame (Step 2)")
     parser.add_argument("--batch", type=int, default=32, help="lower this if the GPU runs out of memory")
     args = parser.parse_args()
 
+    if args.full:
+        model = args.model or FULL_RUN_MODEL
+        frames = load_usable_frames()
+        print(f"Full run on {len(frames):,} frames with {model}")
+        run_yolo(frames, model, run_name="full", batch_size=args.batch)
+        print("\nDone. Next: python -m cctv.detect.build_traffic")
+        return
+
+    args.model = args.model or "yolo11s.pt"
     frames = one_frame_per_hour(load_usable_frames())
     print(f"Quick pass on {len(frames):,} frames (1 per camera per hour)")
     boxes = run_yolo(frames, args.model, run_name="quick", batch_size=args.batch)
